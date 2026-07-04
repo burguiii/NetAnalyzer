@@ -107,6 +107,7 @@ def get_snapshot() -> list[dict]:
     listening_ports = {
         r["local_port"] for r in snapshot if r.get("raw_status") == "LISTEN"
     }
+    trusted = db.get_trusted_map()   # {ip: rules}
 
     for row in snapshot:
         info = ip_cache.get(row["remote_ip"])
@@ -116,6 +117,8 @@ def get_snapshot() -> list[dict]:
             row["city"] = info.get("city") or ""
             row["isp"] = info.get("isp") or ""
             row["hostname"] = info.get("hostname") or ""
+            row["lat"] = info.get("lat")
+            row["lon"] = info.get("lon")
             row["abuse_score"] = info.get("abuse_score")
         else:
             row["country"] = ""
@@ -123,10 +126,23 @@ def get_snapshot() -> list[dict]:
             row["city"] = ""
             row["isp"] = ""
             row["hostname"] = ""
+            row["lat"] = None
+            row["lon"] = None
             row["abuse_score"] = None
 
         # Traduccion a lenguaje humano (que es, quien, direccion, veredicto...)
-        row["explain"] = explain.describe(row, info, listening_ports)
+        e = explain.describe(row, info, listening_ports)
+
+        # Marcar si la IP es de confianza (allowlist)
+        if row["remote_ip"] in trusted:
+            e["trusted"] = True
+            if trusted[row["remote_ip"]] == "*":
+                # Confianza total: la pintamos verde salvo que sea peligrosa real
+                if e["verdict"] not in ("bad",):
+                    e["verdict"] = "ok"
+        else:
+            e["trusted"] = False
+        row["explain"] = e
     return snapshot
 
 

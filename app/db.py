@@ -59,6 +59,8 @@ def init_db():
                 city TEXT,
                 isp TEXT,
                 hostname TEXT,
+                lat REAL,
+                lon REAL,
                 abuse_score INTEGER,
                 last_checked TEXT
             );
@@ -87,6 +89,14 @@ def init_db():
                 resuelta INTEGER DEFAULT 0
             );
 
+            CREATE TABLE IF NOT EXISTS trusted_ips (
+                ip TEXT PRIMARY KEY,
+                note TEXT,
+                rules TEXT,          -- '*' = confiar en todo; o lista de reglas
+                                     --        silenciadas separadas por '||'
+                added_at TEXT
+            );
+
             CREATE INDEX IF NOT EXISTS idx_conn_remote ON connections(remote_ip);
             CREATE INDEX IF NOT EXISTS idx_conn_time ON connections(timestamp);
             CREATE INDEX IF NOT EXISTS idx_alerts_resuelta ON alerts(resuelta);
@@ -94,6 +104,8 @@ def init_db():
         )
         # Migraciones suaves para BDs creadas con versiones anteriores.
         _add_column_if_missing(conn, "ip_info", "hostname", "TEXT")
+        _add_column_if_missing(conn, "ip_info", "lat", "REAL")
+        _add_column_if_missing(conn, "ip_info", "lon", "REAL")
         _add_column_if_missing(conn, "alerts", "advice", "TEXT")
         _add_column_if_missing(conn, "alerts", "direction", "TEXT")
 
@@ -176,21 +188,24 @@ def get_all_ip_info() -> dict:
 
 
 def upsert_ip_info(ip: str, country="", country_code="", city="",
-                   isp="", hostname="", abuse_score=None):
+                   isp="", hostname="", lat=None, lon=None, abuse_score=None):
     with _write_lock, _connect() as conn:
         conn.execute(
             """INSERT INTO ip_info (ip, country, country_code, city, isp,
-                                    hostname, abuse_score, last_checked)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                    hostname, lat, lon, abuse_score, last_checked)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(ip) DO UPDATE SET
                  country=excluded.country,
                  country_code=excluded.country_code,
                  city=excluded.city,
                  isp=excluded.isp,
                  hostname=excluded.hostname,
+                 lat=excluded.lat,
+                 lon=excluded.lon,
                  abuse_score=COALESCE(excluded.abuse_score, ip_info.abuse_score),
                  last_checked=excluded.last_checked""",
-            (ip, country, country_code, city, isp, hostname, abuse_score, _now()),
+            (ip, country, country_code, city, isp, hostname, lat, lon,
+             abuse_score, _now()),
         )
 
 
@@ -230,6 +245,91 @@ def count_pending_alerts() -> int:
     with _connect() as conn:
         cur = conn.execute("SELECT COUNT(*) FROM alerts WHERE resuelta = 0")
         return cur.fetchone()[0]
+
+
+def resolve_alerts_for(ip: str, rule: str | None = None):
+    """Marca como revisadas las alertas pendientes de una IP (opcionalmente
+    solo las de una regla concreta). Se usa al marcar una IP de confianza."""
+    with _write_lock, _connect() as conn:
+        if rule and rule != "*":
+            conn.execute(
+                "UPDATE alerts SET resuelta = 1 WHERE remote_ip = ? AND rule = ?",
+                (ip, rule),
+            )
+        else:
+            conn.execute(
+                "UPDATE alerts SET resuelta = 1 WHERE remote_ip = ?", (ip,)
+            )
+
+
+# ----------------------------------------------------------------------
+# Lista de confianza (allowlist) de IPs
+# ----------------------------------------------------------------------
+_RULE_SEP = "||"
+
+
+def add_trusted_ip(ip: str, note: str = "", rule: str = "*"):
+    """
+    Marca una IP como de confianza.
+      - rule="*"      -> confiar en TODO lo de esa IP (silencia cualquier alerta).
+      - rule="<regla>"-> confiar solo en esa regla; si la IP hace algo DISTINTO
+                          (otra regla) seguira avisando.
+    Si la IP ya existe, acumula la nueva regla (salvo que ya sea '*').
+    """
+    with _write_lock, _connect() as conn:
+        cur = conn.execute("SELECT rules FROM trusted_ips WHERE ip = ?", (ip,))
+        row = cur.fetchone()
+        if row is None:
+            rules = "*" if rule == "*" else rule
+            conn.execute(
+                "INSERT INTO trusted_ips (ip, note, rules, added_at) VALUES (?,?,?,?)",
+                (ip, note, rules, _now()),
+            )
+        else:
+            existing = row["rules"] or ""
+            if existing == "*" or rule == "*":
+                new_rules = "*"
+            else:
+                parts = set(filter(None, existing.split(_RULE_SEP)))
+                parts.add(rule)
+                new_rules = _RULE_SEP.join(sorted(parts))
+            conn.execute(
+                "UPDATE trusted_ips SET rules = ?, note = COALESCE(NULLIF(?,''), note) WHERE ip = ?",
+                (new_rules, note, ip),
+            )
+
+
+def remove_trusted_ip(ip: str):
+    with _write_lock, _connect() as conn:
+        conn.execute("DELETE FROM trusted_ips WHERE ip = ?", (ip,))
+
+
+def get_trusted_ips() -> list[dict]:
+    with _connect() as conn:
+        cur = conn.execute("SELECT * FROM trusted_ips ORDER BY added_at DESC")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_trusted_map() -> dict:
+    """Devuelve {ip: rules} para consultas rapidas."""
+    with _connect() as conn:
+        cur = conn.execute("SELECT ip, rules FROM trusted_ips")
+        return {r["ip"]: (r["rules"] or "*") for r in cur.fetchall()}
+
+
+def is_ip_trusted(ip: str, rule: str) -> bool:
+    """¿Está silenciada esta (IP, regla)?"""
+    if not ip:
+        return False
+    with _connect() as conn:
+        cur = conn.execute("SELECT rules FROM trusted_ips WHERE ip = ?", (ip,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        rules = row["rules"] or "*"
+        if rules == "*":
+            return True
+        return rule in set(rules.split(_RULE_SEP))
 
 
 # ----------------------------------------------------------------------

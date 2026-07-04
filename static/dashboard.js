@@ -4,8 +4,10 @@ const $$ = (s) => document.querySelectorAll(s);
 
 const VIEWS = {
   conexiones: { title: "Conexiones activas",  sub: "Todo lo que tu PC está enviando y recibiendo ahora mismo." },
+  mapa:       { title: "Mapa mundial",         sub: "De dónde salen y a dónde van tus conexiones, en tiempo real." },
   alertas:    { title: "Alertas",             sub: "Patrones sospechosos detectados automáticamente." },
   historico:  { title: "Histórico",           sub: "Busca conexiones pasadas por IP o proceso." },
+  confianza:  { title: "IPs de confianza",     sub: "Direcciones que tú marcaste como conocidas y seguras." },
   bloqueadas: { title: "IPs bloqueadas",       sub: "Reglas de firewall creadas por esta app." },
 };
 
@@ -26,6 +28,10 @@ function switchView(view) {
   $("#cards").style.display = view === "conexiones" ? "grid" : "none";
   if (view === "alertas") loadAlerts();
   if (view === "bloqueadas") loadBlocked();
+  if (view === "confianza") loadTrusted();
+  // El mapa consume CPU animando: solo corre mientras su vista está abierta.
+  if (view === "mapa") WorldMap.start();
+  else WorldMap.stop();
 }
 
 /* ---------- Utilidades ---------- */
@@ -137,7 +143,7 @@ function renderConnections() {
       <td>${DIRLABEL[e.direction] || "-"}</td>
       <td>${flag}${esc(e.who || c.remote_ip)}</td>
       <td><span class="svc">${esc(e.service || "-")}</span></td>
-      <td>${reputationTag(c.abuse_score)}</td>
+      <td>${e.trusted ? `<span class="tag tag-ok">✅ De confianza</span> ` : ""}${reputationTag(c.abuse_score)}</td>
       <td class="chev">${isOpen ? "▲" : "▼"}</td>
     </tr>`;
     if (!isOpen) return mainRow;
@@ -164,7 +170,11 @@ function detailRow(c, e, v) {
         <ul>${steps}</ul>
       </div>
       ${e.note ? `<div class="detail-note">ℹ️ ${esc(e.note)}</div>` : ""}
-      ${bloqueable ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); blockIp('${c.remote_ip}')">🛡️ Bloquear ${esc(c.remote_ip)}</button>` : ""}
+      <div class="detail-buttons">
+        ${bloqueable && !e.trusted ? `<button class="btn btn-trust btn-sm" onclick="event.stopPropagation(); trustIp('${c.remote_ip}','')">✅ Marcar de confianza</button>` : ""}
+        ${e.trusted ? `<button class="btn btn-sm" onclick="event.stopPropagation(); untrustIp('${c.remote_ip}')">Quitar de confianza</button>` : ""}
+        ${bloqueable ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); blockIp('${c.remote_ip}')">🛡️ Bloquear ${esc(c.remote_ip)}</button>` : ""}
+      </div>
     </div>
   </td></tr>`;
 }
@@ -195,22 +205,31 @@ async function loadAlerts() {
     "Entrante": `<span class="dir dir-in">⬇️ Vino de fuera (no lo causaste tú)</span>`,
     "Saliente": `<span class="dir dir-out">⬆️ Salió de tu PC (una app la inició)</span>`,
   };
-  list.innerHTML = alerts.map((a) => `
+  list.innerHTML = alerts.map((a) => {
+    const flag = a.country_code ? flagEmoji(a.country_code) : "";
+    const whoLine = a.who
+      ? `<div class="alert-who">🌐 <b>¿De dónde viene?</b> ${flag} ${esc(a.who)}</div>`
+      : "";
+    const ruleJs = encodeURIComponent(a.rule);
+    return `
     <div class="alert-card sev-${a.severity.toLowerCase()}">
       <div class="alert-icon">${icons[a.severity] || "⚠️"}</div>
       <div class="alert-body">
         <div class="alert-title">${esc(a.rule)} <span class="alert-sev">${a.severity}</span></div>
         <div class="alert-desc">${esc(a.description)}</div>
+        ${whoLine}
         ${a.direction ? `<div class="alert-dir">${dirTxt[a.direction] || ""}</div>` : ""}
         ${a.advice ? `<div class="alert-advice-box"><b>¿Qué significa y qué hago?</b><br>${esc(a.advice)}</div>` : ""}
-        <div class="alert-meta">🕑 ${a.timestamp}${a.remote_ip ? " · 🌐 " + esc(a.remote_ip) : ""}${a.process_name ? " · ⚙ " + esc(a.process_name) : ""}</div>
+        <div class="alert-meta">🕑 ${a.timestamp}${a.remote_ip ? " · 📍 " + esc(a.remote_ip) : ""}${a.process_name ? " · ⚙ " + esc(a.process_name) : ""}</div>
       </div>
       <div class="alert-actions">
         ${a.resuelta ? `<span class="tag tag-ok">revisada</span>` :
           `<button class="btn btn-sm" onclick="resolveAlert(${a.id})">✓ Entendido</button>`}
+        ${a.remote_ip ? `<button class="btn btn-trust btn-sm" title="No volver a avisar de ESTO desde esta IP" onclick="trustIp('${a.remote_ip}','${ruleJs}')">✅ Es de confianza</button>` : ""}
         ${a.remote_ip ? `<button class="btn btn-danger btn-sm" onclick="blockIp('${a.remote_ip}')">🛡️ Bloquear IP</button>` : ""}
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 async function resolveAlert(id) {
@@ -244,6 +263,73 @@ async function unblockIp(ip) {
   toast(d.message, d.ok ? "ok" : "err");
   loadBlocked();
 }
+
+/* ---------- Lista de confianza (allowlist) ---------- */
+async function trustIp(ip, ruleEncoded) {
+  const rule = ruleEncoded ? decodeURIComponent(ruleEncoded) : "*";
+  const msg = rule === "*"
+    ? `¿Marcar la IP ${ip} como de confianza para TODO?\n\nDejará de generar cualquier alerta. Si hace algo peligroso de verdad (mala reputación) seguirá avisando.`
+    : `¿Marcar ${ip} como de confianza para «${rule}»?\n\nNo se volverá a avisar de ESE tipo de aviso desde esta IP.\nSi la misma IP hace algo DISTINTO, sí te avisará.`;
+  if (!confirm(msg)) return;
+  const r = await fetch("/api/trust", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ip, rule }),
+  });
+  const d = await r.json();
+  toast(d.message, d.ok ? "ok" : "err");
+  loadAlerts();
+  loadConnections();
+}
+
+async function untrustIp(ip) {
+  if (!confirm(`¿Quitar ${ip} de la lista de confianza?\n\nVolverá a avisar si detecta algo.`)) return;
+  const r = await fetch("/api/untrust", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ip }),
+  });
+  const d = await r.json();
+  toast(d.message, "ok");
+  loadTrusted();
+}
+
+async function loadTrusted() {
+  const r = await fetch("/api/trusted");
+  const { trusted } = await r.json();
+  const list = $("#trustedList");
+  if (!trusted.length) {
+    list.innerHTML = `<div class="empty">Aún no has marcado ninguna IP como de confianza.<br><span class="muted">Puedes hacerlo desde una alerta o desde el detalle de una conexión.</span></div>`;
+    return;
+  }
+  list.innerHTML = trusted.map((t) => {
+    const scope = t.rules === "*"
+      ? `<span class="tag tag-ok">Confianza total</span>`
+      : `<span class="tag tag-neutral">Solo: ${esc(t.rules.replaceAll("||", ", "))}</span>`;
+    const flag = t.country_code ? flagEmoji(t.country_code) : "";
+    const location = (t.city || t.country)
+      ? `${flag} ${esc([t.city, t.country].filter(Boolean).join(", "))}`
+      : `<span class="muted">ubicación desconocida</span>`;
+    const rows = [
+      ["🏢 Quién es", t.who ? esc(t.who) : `<span class="muted">sin identificar</span>`],
+      ["📍 Ubicación", location],
+      ["🔗 Nombre de host", t.hostname ? `<span class="mono">${esc(t.hostname)}</span>` : `<span class="muted">no resuelve</span>`],
+      ["🛡️ Reputación", reputationTag(t.abuse_score)],
+      ["📅 Marcada el", `<span class="muted">${esc(t.added_at || "-")}</span>`],
+    ];
+    if (t.note) rows.push(["📝 Nota", esc(t.note)]);
+    const grid = rows.map(([k, v]) => `<div class="tinfo-row"><span class="tinfo-k">${k}</span><span>${v}</span></div>`).join("");
+    return `<div class="trusted-card">
+      <div class="trusted-head">
+        <span class="trusted-ip mono">✅ ${esc(t.ip)}</span>
+        ${scope}
+        <button class="btn btn-sm" style="margin-left:auto" onclick="untrustIp('${t.ip}')">Quitar</button>
+      </div>
+      <div class="tinfo">${grid}</div>
+    </div>`;
+  }).join("");
+}
+$("#refreshTrusted").addEventListener("click", loadTrusted);
 
 async function loadBlocked() {
   const r = await fetch("/api/blocked");

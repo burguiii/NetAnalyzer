@@ -51,7 +51,7 @@ def _geolocate(ip: str) -> dict:
     try:
         r = requests.get(
             f"http://ip-api.com/json/{ip}"
-            "?fields=status,country,countryCode,city,isp",
+            "?fields=status,country,countryCode,city,isp,lat,lon",
             timeout=6,
         )
         data = r.json()
@@ -61,6 +61,8 @@ def _geolocate(ip: str) -> dict:
                 "country_code": data.get("countryCode", ""),
                 "city": data.get("city", ""),
                 "isp": data.get("isp", ""),
+                "lat": data.get("lat"),
+                "lon": data.get("lon"),
             }
     except Exception:
         pass
@@ -106,6 +108,8 @@ def _worker():
                 city=geo.get("city", ""),
                 isp=geo.get("isp", ""),
                 hostname=hostname,
+                lat=geo.get("lat"),
+                lon=geo.get("lon"),
                 abuse_score=score,
             )
             # ip-api gratis permite ~45 req/min -> pausa suave entre consultas

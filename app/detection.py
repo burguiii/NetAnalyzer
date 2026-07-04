@@ -51,6 +51,11 @@ def _should_emit(rule: str, key: str) -> bool:
 
 
 def _emit(rule, severity, remote_ip="", process="", desc="", direction=""):
+    # Si el usuario marcó esta IP como de confianza PARA ESTA REGLA, no avisamos.
+    # (Si la misma IP dispara OTRA regla distinta, sí avisará: eso es
+    #  comportamiento nuevo no previsto.)
+    if remote_ip and db.is_ip_trusted(remote_ip, rule):
+        return
     key = remote_ip or process or rule
     if _should_emit(rule, key):
         advice = explain.alert_advice(rule, remote_ip, process)

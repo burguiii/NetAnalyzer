@@ -38,7 +38,19 @@ Abre una terminal en la carpeta del proyecto y ejecuta:
 pip install -r requirements.txt
 ```
 
-### 3. Ejecutar **como Administrador** (recomendado)
+### 3. Lanzar con un clic (lo más fácil) 🖱️
+
+Haz **doble clic en `Iniciar_Monitor.bat`**. El lanzador:
+- Pide permisos de Administrador automáticamente (di que **Sí**).
+- Instala las dependencias la primera vez si hiciera falta.
+- Arranca la app y abre el dashboard solo en tu navegador.
+
+> También se crea un acceso directo **"Monitor de Red"** en el Escritorio
+> (si usas el instalador/lanzador) para arrancarlo desde ahí.
+
+Para **detenerlo**: cierra esa ventana negra o pulsa `Ctrl + C`.
+
+### 3-bis. Alternativa manual: ejecutar **como Administrador**
 Para ver las conexiones de *todos* los procesos (no solo los tuyos) y poder
 bloquear IPs, la app necesita permisos de administrador:
 

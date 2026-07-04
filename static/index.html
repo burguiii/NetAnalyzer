@@ -23,12 +23,18 @@
       <button class="menu-item active" data-view="conexiones">
         <span class="ico">🔌</span> Conexiones
       </button>
+      <button class="menu-item" data-view="mapa">
+        <span class="ico">🗺️</span> Mapa mundial
+      </button>
       <button class="menu-item" data-view="alertas">
         <span class="ico">⚠️</span> Alertas
         <span class="badge" id="alertBadge" hidden>0</span>
       </button>
       <button class="menu-item" data-view="historico">
         <span class="ico">🕑</span> Histórico
+      </button>
+      <button class="menu-item" data-view="confianza">
+        <span class="ico">✅</span> De confianza
       </button>
       <button class="menu-item" data-view="bloqueadas">
         <span class="ico">🛡️</span> Bloqueadas
@@ -142,6 +148,36 @@
       </div>
     </section>
 
+    <!-- Vista: Mapa mundial -->
+    <section class="view" id="view-mapa" hidden>
+      <div class="panel map-panel">
+        <div class="panel-head">
+          <span class="map-legend"><span class="dot-home"></span> Tu PC</span>
+          <span class="map-legend"><span class="dot ok"></span> Destino normal</span>
+          <span class="map-legend"><span class="dot bad"></span> Destino peligroso</span>
+          <span class="muted" style="margin-left:auto" id="mapCount">—</span>
+        </div>
+        <div class="map-wrap">
+          <canvas id="mapCanvas"></canvas>
+          <div id="mapTip" class="map-tip" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vista: De confianza -->
+    <section class="view" id="view-confianza" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <strong>IPs marcadas como de confianza</strong>
+          <span class="muted" style="font-size:13px">No generan alertas del tipo que aprobaste. Si hacen algo distinto, sí avisan.</span>
+          <button class="btn" id="refreshTrusted" style="margin-left:auto">↻ Refrescar</button>
+        </div>
+        <div id="trustedList" class="blocked-list">
+          <div class="empty">Cargando…</div>
+        </div>
+      </div>
+    </section>
+
     <!-- Vista: Bloqueadas -->
     <section class="view" id="view-bloqueadas" hidden>
       <div class="panel">
@@ -159,6 +195,7 @@
   <!-- Toast de notificaciones -->
   <div id="toast" class="toast" hidden></div>
 
+  <script src="worldmap.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>
