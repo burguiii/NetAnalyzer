@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitor de Red · Mi PC</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Barra lateral -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">◉</div>
+      <div class="brand-text">
+        <strong>NetGuard</strong>
+        <span>Monitor de mi PC</span>
+      </div>
+    </div>
+
+    <nav class="menu">
+      <button class="menu-item active" data-view="conexiones">
+        <span class="ico">🔌</span> Conexiones
+      </button>
+      <button class="menu-item" data-view="alertas">
+        <span class="ico">⚠️</span> Alertas
+        <span class="badge" id="alertBadge" hidden>0</span>
+      </button>
+      <button class="menu-item" data-view="historico">
+        <span class="ico">🕑</span> Histórico
+      </button>
+      <button class="menu-item" data-view="bloqueadas">
+        <span class="ico">🛡️</span> Bloqueadas
+      </button>
+    </nav>
+
+    <div class="side-footer">
+      <div class="dot-live"><span class="pulse"></span> En vivo</div>
+      <small id="sideStatus">—</small>
+    </div>
+  </aside>
+
+  <!-- Contenido principal -->
+  <main class="content">
+    <header class="topbar">
+      <div>
+        <h1 id="viewTitle">Conexiones activas</h1>
+        <p id="viewSubtitle" class="muted">Todo lo que tu PC está enviando y recibiendo ahora mismo.</p>
+      </div>
+      <div class="topbar-actions">
+        <div class="pill" id="clock">--:--:--</div>
+      </div>
+    </header>
+
+    <!-- Tarjetas de resumen -->
+    <section class="cards" id="cards">
+      <div class="card">
+        <span class="card-label">Conexiones activas</span>
+        <span class="card-value" id="statConns">0</span>
+      </div>
+      <div class="card">
+        <span class="card-label">Destinos únicos</span>
+        <span class="card-value" id="statIps">0</span>
+      </div>
+      <div class="card">
+        <span class="card-label">Países implicados</span>
+        <span class="card-value" id="statCountries">0</span>
+      </div>
+      <div class="card card-alert">
+        <span class="card-label">Alertas pendientes</span>
+        <span class="card-value" id="statAlerts">0</span>
+      </div>
+    </section>
+
+    <!-- Vista: Conexiones -->
+    <section class="view" id="view-conexiones">
+      <div class="legend">
+        <strong>¿Cómo leer esto?</strong>
+        <span><span class="dot ok"></span> Normal, tranquilo</span>
+        <span><span class="dot warn"></span> Conviene mirarlo</span>
+        <span><span class="dot bad"></span> Peligroso, actúa</span>
+        <span class="sep">·</span>
+        <span>⬆️ <b>Saliente</b>: lo iniciaste tú (navegando/una app)</span>
+        <span>⬇️ <b>Entrante</b>: vino de fuera hacia tu PC</span>
+        <span class="sep">·</span>
+        <span>👉 Haz clic en una fila para ver la explicación completa</span>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <input type="search" id="filterConns" placeholder="🔍 Buscar por programa, web o país…">
+          <label class="switch"><input type="checkbox" id="hideKnown"> Ocultar tráfico normal</label>
+          <label class="switch"><input type="checkbox" id="autoRefresh" checked> Auto-actualizar</label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th></th><th>Programa</th><th>Dirección</th>
+                <th>Con quién habla</th><th>Para qué</th>
+                <th>¿Fiable?</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="connsBody">
+              <tr><td colspan="7" class="empty">Cargando conexiones…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vista: Alertas -->
+    <section class="view" id="view-alertas" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <label class="switch"><input type="checkbox" id="onlyPending" checked> Solo pendientes</label>
+        </div>
+        <div id="alertsList" class="alerts-list">
+          <div class="empty">Sin alertas por ahora. 🎉</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vista: Histórico -->
+    <section class="view" id="view-historico" hidden>
+      <div class="panel">
+        <div class="panel-head history-filters">
+          <input type="text" id="histIp" placeholder="IP contiene…">
+          <input type="text" id="histProc" placeholder="Proceso contiene…">
+          <button class="btn btn-primary" id="histSearch">Buscar</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Fecha</th><th>Proceso</th><th>IP remota</th><th>Puerto</th><th>Protocolo</th><th>Estado</th></tr>
+            </thead>
+            <tbody id="histBody">
+              <tr><td colspan="6" class="empty">Escribe un filtro y pulsa Buscar.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vista: Bloqueadas -->
+    <section class="view" id="view-bloqueadas" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <strong>IPs bloqueadas en el Firewall de Windows</strong>
+          <button class="btn" id="refreshBlocked">↻ Refrescar</button>
+        </div>
+        <div id="blockedList" class="blocked-list">
+          <div class="empty">Cargando…</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast de notificaciones -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

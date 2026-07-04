@@ -1,0 +1,10 @@
+# Monitor de Red Personal - Fase 1
+# Instalar con: pip install -r requirements.txt
+
+psutil>=5.9.0        # Listar conexiones activas y mapearlas a procesos
+flask>=3.0.0         # Backend del dashboard web
+requests>=2.31.0     # Consultas a APIs externas (geolocalizacion / reputacion)
+
+# --- Opcional: captura de paquetes (requiere Npcap instalado) ---
+# Descomenta scapy solo cuando tengas Npcap (https://npcap.com/) instalado.
+# scapy>=2.5.0
